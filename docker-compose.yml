@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: quizzo-go-app
+    container_name: quizzo_app
+    ports:
+      - "3000:3000"
+    environment:
+      DB_DOCKER_HOST: ${DB_DOCKER_HOST}
+      DB_DOCKER_PORT: ${DB_DOCKER_PORT}
+      DB_DOCKER_USER: ${DB_DOCKER_USER}
+      DB_DOCKER_PASSWORD: ${DB_DOCKER_PASSWORD}
+      DB_DOCKER_NAME: ${DB_DOCKER_NAME}
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - quizzo_net
+
+  postgres:
+    image: postgres:15
+    container_name: quizzo_postgres
+    ports:
+      - "5431:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    environment:
+      POSTGRES_USER: ${DB_DOCKER_USER}
+      POSTGRES_PASSWORD: ${DB_DOCKER_PASSWORD}
+      POSTGRES_DB: ${DB_DOCKER_NAME}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_DOCKER_USER} -d ${DB_DOCKER_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - quizzo_net
+
+volumes:
+  pg_data:
+
+networks:
+  quizzo_net:
+    driver: bridge
