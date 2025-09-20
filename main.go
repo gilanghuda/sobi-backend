@@ -11,10 +11,10 @@ import (
 )
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatalf("Error loading .env file: %v", err)
-	}
+	_ = godotenv.Load()
+	// if err != nil {
+	// 	log.Fatalf("Error loading .env file: %v", err)
+	// }
 
 	app := fiber.New()
 
@@ -28,7 +28,7 @@ func main() {
 		return c.SendString("Hello, World!")
 	})
 
-	_, err = database.InitDB()
+	_, err := database.InitDB()
 	if err != nil {
 		log.Fatalf("Failed to connect to the database: %v", err)
 	}
