@@ -5,8 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: quizzo-go-app
-    container_name: quizzo_app
+    image: sobi-go-app
+    container_name: sobi_app
     ports:
       - "3000:3000"
     environment:
@@ -21,16 +21,15 @@ services:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - quizzo_net
+      - sobi_net
 
   postgres:
     image: postgres:15
-    container_name: quizzo_postgres
+    container_name: sobi_postgres
     ports:
       - "5431:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
-      - init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     environment:
       POSTGRES_USER: ${DB_DOCKER_USER}
       POSTGRES_PASSWORD: ${DB_DOCKER_PASSWORD}
@@ -42,11 +41,11 @@ services:
       retries: 5
     restart: unless-stopped
     networks:
-      - quizzo_net
+      - sobi_net
 
 volumes:
   pg_data:
 
 networks:
-  quizzo_net:
+  sobi_net:
     driver: bridge
