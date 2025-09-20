@@ -8,7 +8,7 @@ services:
     image: sobi-go-app
     container_name: sobi_app
     ports:
-      - "80:3000"
+      - "80:80"
     environment:
       DB_DOCKER_HOST: ${DB_DOCKER_HOST}
       DB_DOCKER_PORT: ${DB_DOCKER_PORT}
