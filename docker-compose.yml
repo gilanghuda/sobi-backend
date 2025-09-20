@@ -8,7 +8,7 @@ services:
     image: sobi-go-app
     container_name: sobi_app
     ports:
-      - "3000:3000"
+      - "80:3000"
     environment:
       DB_DOCKER_HOST: ${DB_DOCKER_HOST}
       DB_DOCKER_PORT: ${DB_DOCKER_PORT}
@@ -27,7 +27,7 @@ services:
     image: postgres:15
     container_name: sobi_postgres
     ports:
-      - "5431:5432"
+      - "5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
     environment:
