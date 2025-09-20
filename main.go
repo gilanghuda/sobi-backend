@@ -6,6 +6,7 @@ import (
 	"github.com/gilanghuda/sobi-backend/pkg/database"
 	"github.com/gilanghuda/sobi-backend/pkg/routes"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/joho/godotenv"
 )
 
@@ -17,6 +18,12 @@ func main() {
 
 	app := fiber.New()
 
+	app.Use(cors.New(cors.Config{
+		AllowOrigins: "http://localhost:3001, http://localhost:3002",
+		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
+		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
+	}))
+
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
@@ -27,6 +34,8 @@ func main() {
 	}
 
 	routes.RegisterUserRoutes(app)
+	routes.RegisterGoalsRoutes(app)
+	routes.RegisterChatRoutes(app)
 
 	log.Fatal(app.Listen(":3000"))
 }

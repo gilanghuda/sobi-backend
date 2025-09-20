@@ -49,3 +49,28 @@ func (q *RefreshTokenQueries) RevokeRefreshToken(id uuid.UUID) error {
 	}
 	return nil
 }
+
+func (q *RefreshTokenQueries) RevokeRefreshTokenByToken(token string) error {
+	query := `UPDATE refresh_tokens SET revoked = TRUE WHERE token = $1`
+	res, err := q.DB.Exec(query, token)
+	if err != nil {
+		return errors.New("unable to revoke refresh token by token, DB error")
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return errors.New("no refresh token revoked")
+	}
+	return nil
+}
+
+func (q *RefreshTokenQueries) RevokeRefreshTokensByUser(userID uuid.UUID) error {
+	query := `UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1`
+	_, err := q.DB.Exec(query, userID)
+	if err != nil {
+		return errors.New("unable to revoke refresh tokens for user, DB error")
+	}
+	return nil
+}

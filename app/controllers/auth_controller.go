@@ -3,6 +3,7 @@ package controllers
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gilanghuda/sobi-backend/app/models"
@@ -267,4 +268,60 @@ func RefreshToken(c *fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"access_token": tokenString, "expires_in": accessMinutes * 60})
+}
+
+// UserLogout revokes refresh token(s) for the authenticated user.
+// If body contains { "refresh_token": "..." } it revokes that token only,
+// otherwise it revokes all refresh tokens for the user.
+func UserLogout(c *fiber.Ctx) error {
+	// authenticate via bearer token
+	authHeader := c.Get("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Missing or invalid Authorization header"})
+	}
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "JWT secret not set"})
+	}
+
+	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) { return []byte(secret), nil })
+	if err != nil || !token.Valid {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid or expired token"})
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid token claims"})
+	}
+
+	userIDStr, ok := claims["user_id"].(string)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid token payload"})
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user id in token"})
+	}
+
+	// optional payload to revoke single refresh token
+	body := struct {
+		RefreshToken string `json:"refresh_token"`
+	}{}
+	_ = c.BodyParser(&body)
+
+	rtQueries := queries.RefreshTokenQueries{DB: database.DB}
+	if body.RefreshToken != "" {
+		if err := rtQueries.RevokeRefreshTokenByToken(body.RefreshToken); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to revoke refresh token"})
+		}
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "Refresh token revoked"})
+	}
+
+	if err := rtQueries.RevokeRefreshTokensByUser(userID); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to revoke refresh tokens for user"})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "Logged out"})
 }
