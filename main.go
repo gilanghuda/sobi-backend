@@ -37,5 +37,5 @@ func main() {
 	routes.RegisterGoalsRoutes(app)
 	routes.RegisterChatRoutes(app)
 
-	log.Fatal(app.Listen(":80"))
+	log.Fatal(app.Listen(":8000"))
 }
