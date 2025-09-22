@@ -87,6 +87,8 @@ func UserSignUp(c *fiber.Ctx) error {
 		PasswordHash: string(hashedPassword),
 		UserRole:     role,
 		PhoneNumber:  signUp.Phone,
+		Gender:       "male",
+		Avatar:       "1",
 		Verified:     false,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
@@ -270,11 +272,7 @@ func RefreshToken(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"access_token": tokenString, "expires_in": accessMinutes * 60})
 }
 
-// UserLogout revokes refresh token(s) for the authenticated user.
-// If body contains { "refresh_token": "..." } it revokes that token only,
-// otherwise it revokes all refresh tokens for the user.
 func UserLogout(c *fiber.Ctx) error {
-	// authenticate via bearer token
 	authHeader := c.Get("Authorization")
 	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Missing or invalid Authorization header"})
@@ -305,7 +303,6 @@ func UserLogout(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user id in token"})
 	}
 
-	// optional payload to revoke single refresh token
 	body := struct {
 		RefreshToken string `json:"refresh_token"`
 	}{}

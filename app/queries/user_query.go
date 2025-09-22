@@ -17,7 +17,7 @@ type UserQueries struct {
 func (q *UserQueries) GetUserByID(id uuid.UUID) (models.User, error) {
 	user := models.User{}
 
-	query := `SELECT uid, username, user_role, email, password_hash, verified,  created_at, updated_at
+	query := `SELECT uid, username, user_role, email, gender, avatar, password_hash, verified,  created_at, updated_at
 			  FROM users WHERE uid = $1`
 
 	err := q.DB.QueryRow(query, id).Scan(
@@ -25,6 +25,8 @@ func (q *UserQueries) GetUserByID(id uuid.UUID) (models.User, error) {
 		&user.Username,
 		&user.UserRole,
 		&user.Email,
+		&user.Gender,
+		&user.Avatar,
 		&user.PasswordHash,
 		&user.Verified,
 		&user.CreatedAt,
@@ -32,6 +34,7 @@ func (q *UserQueries) GetUserByID(id uuid.UUID) (models.User, error) {
 	)
 
 	if err != nil {
+		println(err.Error())
 		if err == sql.ErrNoRows {
 			return user, errors.New("user not found")
 		}
@@ -70,8 +73,8 @@ func (q *UserQueries) GetUserByEmail(email string) (models.User, error) {
 }
 
 func (q *UserQueries) CreateUser(u *models.User) error {
-	query := `INSERT INTO users (uid, username, user_role, email, password_hash, phone_number, verified, created_at, updated_at, otp)
-			  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
+	query := `INSERT INTO users (uid, username, user_role, email, password_hash, phone_number, verified, created_at, updated_at, otp, gender, avatar)
+			  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
 
 	_, err := q.DB.Exec(query,
 		u.ID,
@@ -84,6 +87,8 @@ func (q *UserQueries) CreateUser(u *models.User) error {
 		u.CreatedAt,
 		u.UpdatedAt,
 		u.OTP,
+		u.Gender,
+		u.Avatar,
 	)
 
 	if err != nil {
