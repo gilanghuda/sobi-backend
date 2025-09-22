@@ -15,9 +15,10 @@ type GoalsQueries struct {
 }
 
 func (q *GoalsQueries) CreateUserGoal(g *models.UserGoal) error {
-	query := `INSERT INTO user_goals (id, user_id, goal_category, status, current_day, start_date, target_end_date) VALUES ($1, $2, $3, $4, $5, $6, $7)`
-	_, err := q.DB.Exec(query, g.ID, g.UserID, g.GoalCategory, g.Status, g.CurrentDay, g.StartDate, g.TargetEndDate)
+	query := `INSERT INTO user_goals (id, user_id, goal_category, status,  start_date, target_end_date) VALUES ($1, $2, $3, $4, $5, $6)`
+	_, err := q.DB.Exec(query, g.ID, g.UserID, g.GoalCategory, g.Status, g.StartDate, g.TargetEndDate)
 	if err != nil {
+		println(err.Error())
 		return errors.New("unable to create user goal, DB error")
 	}
 	return nil

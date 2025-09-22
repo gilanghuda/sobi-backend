@@ -34,3 +34,8 @@ type CreateMessageRequest struct {
 	Text    string `json:"text,omitempty"`
 	Visible *bool  `json:"visible,omitempty"`
 }
+
+type MatchRequest struct {
+	Category string `json:"category,omitempty"`
+	Role     string `json:"role,omitempty"`
+}
