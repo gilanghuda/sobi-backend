@@ -51,7 +51,7 @@ func CreateUserGoal(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "User goal created", "goal": g})
 }
 
-func GetTodayMissions(c *fiber.Ctx) error {
+func GetMissions(c *fiber.Ctx) error {
 	authHeader := c.Get("Authorization")
 	userID, err := utils.ExtractUserIDFromHeader(authHeader)
 	if err != nil {
@@ -67,12 +67,31 @@ func GetTodayMissions(c *fiber.Ctx) error {
 
 	mQ := queries.MissionsQueries{DB: database.DB}
 
-	today := time.Now()
+	// use date provided by frontend via query param `date` (YYYY-MM-DD)
+	dateStr := strings.TrimSpace(c.Query("date"))
+	if dateStr == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "date query param required (YYYY-MM-DD)"})
+	}
+	inputDate, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid date format, use YYYY-MM-DD"})
+	}
 
 	var result []models.GoalDay
 
 	for _, ug := range userGoals {
-		days := today.YearDay() - ug.StartDate.YearDay() + 1
+		if strings.ToLower(ug.Status) != "active" {
+			continue
+		}
+		startDate := ug.StartDate
+
+		startY, startM, startD := startDate.Date()
+		inputY, inputM, inputD := inputDate.Date()
+
+		startOnly := time.Date(startY, startM, startD, 0, 0, 0, 0, startDate.Location())
+		inputOnly := time.Date(inputY, inputM, inputD, 0, 0, 0, 0, inputDate.Location())
+
+		days := int(inputOnly.Sub(startOnly).Hours()/24) + 1
 		if days < 1 {
 			days = 1
 		}

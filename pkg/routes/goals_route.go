@@ -9,7 +9,7 @@ import (
 func RegisterGoalsRoutes(app *fiber.App) {
 	goal := app.Group("/goals", middleware.JWTProtected())
 	goal.Post("/create", controllers.CreateUserGoal)
-	goal.Get("/today-mission", controllers.GetTodayMissions)
+	goal.Get("/mission", controllers.GetMissions)
 	// admin or internal endpoints to manage missions/tasks
 	goal.Post("/missions", controllers.CreateMission)
 	goal.Post("/missions/tasks", controllers.CreateTask)
