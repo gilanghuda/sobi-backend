@@ -96,7 +96,7 @@ func GetMissions(c *fiber.Ctx) error {
 			days = 1
 		}
 
-		missions, err := mQ.GetMissionsByDay(days)
+		missions, err := mQ.GetMissionsByDayAndCategory(days, ug.GoalCategory)
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to get missions"})
 		}

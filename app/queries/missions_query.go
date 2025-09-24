@@ -48,6 +48,24 @@ func (q *MissionsQueries) GetMissionsByDay(day int) ([]models.Mission, error) {
 	return missions, nil
 }
 
+func (q *MissionsQueries) GetMissionsByDayAndCategory(day int, category string) ([]models.Mission, error) {
+	var missions []models.Mission
+	query := `SELECT id, day_number, focus, category FROM missions WHERE day_number = $1 AND category = $2`
+	rows, err := q.DB.Query(query, day, category)
+	if err != nil {
+		return missions, errors.New("unable to query missions")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var m models.Mission
+		if err := rows.Scan(&m.ID, &m.DayNumber, &m.Focus, &m.Category); err != nil {
+			return missions, err
+		}
+		missions = append(missions, m)
+	}
+	return missions, nil
+}
+
 func (q *MissionsQueries) GetTasksByMission(missionID uuid.UUID) ([]models.Task, error) {
 	var tasks []models.Task
 	query := `SELECT id, mission_id, text FROM tasks WHERE mission_id = $1`
