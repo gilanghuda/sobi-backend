@@ -21,6 +21,7 @@ type UserGoal struct {
 
 type CreateUserGoalRequest struct {
 	GoalCategory  string `json:"goal_category,omitempty" validate:"required"`
+	StartDate     string `json:"start_date,omitempty" validate:"required"`
 	TargetEndDate string `json:"target_end_date,omitempty" validate:"required"`
 }
 

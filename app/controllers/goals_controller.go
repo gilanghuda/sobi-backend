@@ -26,9 +26,33 @@ func CreateUserGoal(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
+	// parse provided start_date and target_end_date
+	startDate, err := time.Parse("2006-01-02", req.StartDate)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid start_date format, use YYYY-MM-DD"})
+	}
 	targetDate, err := time.Parse("2006-01-02", req.TargetEndDate)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid target_end_date format, use YYYY-MM-DD"})
+	}
+	if !targetDate.After(startDate) && !targetDate.Equal(startDate) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "target_end_date must be same or after start_date"})
+	}
+
+	// check overlapping user goals: user can have at most one goal covering the requested start date
+	gq := queries.GoalsQueries{DB: database.DB}
+	existingGoals, err := gq.GetUserGoalsByUser(userID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to query existing user goals"})
+	}
+	for _, eg := range existingGoals {
+		// normalize dates to date-only for comparison
+		egEnd := time.Date(eg.TargetEndDate.Year(), eg.TargetEndDate.Month(), eg.TargetEndDate.Day(), 0, 0, 0, 0, eg.TargetEndDate.Location())
+		newStartOnly := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, startDate.Location())
+		// if existing goal's end date is on or after new start date -> overlap
+		if !egEnd.Before(newStartOnly) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "you already have an active goal in the requested period"})
+		}
 	}
 
 	g := &models.UserGoal{
@@ -37,14 +61,13 @@ func CreateUserGoal(c *fiber.Ctx) error {
 		GoalCategory:  req.GoalCategory,
 		Status:        "active",
 		CurrentDay:    1,
-		StartDate:     time.Now(),
+		StartDate:     startDate,
 		TargetEndDate: targetDate,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 	}
 
-	q := queries.GoalsQueries{DB: database.DB}
-	if err := q.CreateUserGoal(g); err != nil {
+	if err := gq.CreateUserGoal(g); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create user goal"})
 	}
 
@@ -67,7 +90,6 @@ func GetMissions(c *fiber.Ctx) error {
 
 	mQ := queries.MissionsQueries{DB: database.DB}
 
-	// use date provided by frontend via query param `date` (YYYY-MM-DD)
 	dateStr := strings.TrimSpace(c.Query("date"))
 	if dateStr == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "date query param required (YYYY-MM-DD)"})
@@ -77,19 +99,30 @@ func GetMissions(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid date format, use YYYY-MM-DD"})
 	}
 
+	inputOnly := time.Date(inputDate.Year(), inputDate.Month(), inputDate.Day(), 0, 0, 0, 0, inputDate.Location())
+
 	var result []models.GoalDay
 
 	for _, ug := range userGoals {
-		if strings.ToLower(ug.Status) != "active" {
+		computedStatus := "active"
+		if inputOnly.After(ug.TargetEndDate) {
+			summaries, _ := ugq.GetGoalSummariesByUserGoal(ug.ID, userID)
+			if len(summaries) == 0 {
+				computedStatus = "completed"
+			} else {
+				computedStatus = "inactive"
+			}
+		}
+
+		if computedStatus == "inactive" {
 			continue
 		}
+		ug.Status = computedStatus
 		startDate := ug.StartDate
 
 		startY, startM, startD := startDate.Date()
-		inputY, inputM, inputD := inputDate.Date()
 
 		startOnly := time.Date(startY, startM, startD, 0, 0, 0, 0, startDate.Location())
-		inputOnly := time.Date(inputY, inputM, inputD, 0, 0, 0, 0, inputDate.Location())
 
 		days := int(inputOnly.Sub(startOnly).Hours()/24) + 1
 		if days < 1 {

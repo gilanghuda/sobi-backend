@@ -15,8 +15,8 @@ type GoalsQueries struct {
 }
 
 func (q *GoalsQueries) CreateUserGoal(g *models.UserGoal) error {
-	query := `INSERT INTO user_goals (id, user_id, goal_category, status,  start_date, target_end_date) VALUES ($1, $2, $3, $4, $5, $6)`
-	_, err := q.DB.Exec(query, g.ID, g.UserID, g.GoalCategory, g.Status, g.StartDate, g.TargetEndDate)
+	query := `INSERT INTO user_goals (id, user_id, goal_category, start_date, target_end_date) VALUES ($1, $2, $3, $4, $5)`
+	_, err := q.DB.Exec(query, g.ID, g.UserID, g.GoalCategory, g.StartDate, g.TargetEndDate)
 	if err != nil {
 		println(err.Error())
 		return errors.New("unable to create user goal, DB error")
@@ -26,7 +26,7 @@ func (q *GoalsQueries) CreateUserGoal(g *models.UserGoal) error {
 
 func (q *GoalsQueries) GetUserGoalsByUser(userID uuid.UUID) ([]models.UserGoal, error) {
 	var goals []models.UserGoal
-	query := `SELECT id, user_id, goal_category, status,  start_date, target_end_date FROM user_goals WHERE user_id = $1`
+	query := `SELECT id, user_id, goal_category, start_date, target_end_date FROM user_goals WHERE user_id = $1`
 	rows, err := q.DB.Query(query, userID)
 	if err != nil {
 		println(err.Error())
@@ -35,7 +35,7 @@ func (q *GoalsQueries) GetUserGoalsByUser(userID uuid.UUID) ([]models.UserGoal, 
 	defer rows.Close()
 	for rows.Next() {
 		var g models.UserGoal
-		if err := rows.Scan(&g.ID, &g.UserID, &g.GoalCategory, &g.Status, &g.StartDate, &g.TargetEndDate); err != nil {
+		if err := rows.Scan(&g.ID, &g.UserID, &g.GoalCategory, &g.StartDate, &g.TargetEndDate); err != nil {
 			return goals, err
 		}
 		goals = append(goals, g)
@@ -45,8 +45,8 @@ func (q *GoalsQueries) GetUserGoalsByUser(userID uuid.UUID) ([]models.UserGoal, 
 
 func (q *GoalsQueries) GetUserGoalByID(id uuid.UUID) (models.UserGoal, error) {
 	g := models.UserGoal{}
-	query := `SELECT id, user_id, goal_category, status,  start_date, target_end_date FROM user_goals WHERE id = $1`
-	err := q.DB.QueryRow(query, id).Scan(&g.ID, &g.UserID, &g.GoalCategory, &g.Status, &g.StartDate, &g.TargetEndDate)
+	query := `SELECT id, user_id, goal_category, start_date, target_end_date FROM user_goals WHERE id = $1`
+	err := q.DB.QueryRow(query, id).Scan(&g.ID, &g.UserID, &g.GoalCategory, &g.StartDate, &g.TargetEndDate)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return g, errors.New("user goal not found")
