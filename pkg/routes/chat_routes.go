@@ -13,7 +13,6 @@ func RegisterChatRoutes(app *fiber.App) {
 	chat.Post("/messages", controllers.PostMessage)
 	chat.Get("/messages", controllers.GetMessagesByRoom)
 	chat.Post("/match", controllers.MatchHandler)
-	chat.Post("/gemini", controllers.ChatWithGemini)
 	chat.Get("/ws", websocket.New(func(c *websocket.Conn) {
 		controllers.WsHandler(c)
 	}))

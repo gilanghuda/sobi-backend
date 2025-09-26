@@ -26,7 +26,6 @@ func CreateUserGoal(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	// parse provided start_date and target_end_date
 	startDate, err := time.Parse("2006-01-02", req.StartDate)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid start_date format, use YYYY-MM-DD"})
@@ -39,17 +38,14 @@ func CreateUserGoal(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "target_end_date must be same or after start_date"})
 	}
 
-	// check overlapping user goals: user can have at most one goal covering the requested start date
 	gq := queries.GoalsQueries{DB: database.DB}
 	existingGoals, err := gq.GetUserGoalsByUser(userID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to query existing user goals"})
 	}
 	for _, eg := range existingGoals {
-		// normalize dates to date-only for comparison
 		egEnd := time.Date(eg.TargetEndDate.Year(), eg.TargetEndDate.Month(), eg.TargetEndDate.Day(), 0, 0, 0, 0, eg.TargetEndDate.Location())
 		newStartOnly := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, startDate.Location())
-		// if existing goal's end date is on or after new start date -> overlap
 		if !egEnd.Before(newStartOnly) {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "you already have an active goal in the requested period"})
 		}
