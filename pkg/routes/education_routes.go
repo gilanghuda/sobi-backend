@@ -8,4 +8,6 @@ import (
 
 func RegisterEducationRoutes(app *fiber.App) {
 	app.Get("/educations", controllers.GetAllEducations)
+	app.Get("/educations/history", controllers.GetUserHistory)
+	app.Get("/educations/:id", controllers.GetEducationDetail)
 }
