@@ -97,7 +97,7 @@ func GetMissions(c *fiber.Ctx) error {
 
 	inputOnly := time.Date(inputDate.Year(), inputDate.Month(), inputDate.Day(), 0, 0, 0, 0, inputDate.Location())
 
-	var result []models.GoalDay
+	var result []map[string]interface{}
 
 	for _, ug := range userGoals {
 		computedStatus := "active"
@@ -154,7 +154,32 @@ func GetMissions(c *fiber.Ctx) error {
 			mwts = append(mwts, models.MissionWithTasks{Mission: m, Tasks: tps, Progress: mp})
 		}
 
-		result = append(result, models.GoalDay{UserGoal: ug, DayIndex: days, Missions: mwts})
+		var prevDays []map[string]interface{}
+		for d := 1; d < days; d++ {
+			dayMissions, err := mQ.GetMissionsByDayAndCategory(d, ug.GoalCategory)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to get missions"})
+			}
+			dayComplete := true
+			for _, dm := range dayMissions {
+				mp, err := mQ.GetMissionProgress(ug.ID, dm.ID, userID)
+				if err != nil {
+					return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to get mission progress"})
+				}
+				if mp.ID == uuid.Nil || !mp.IsCompleted {
+					dayComplete = false
+					break
+				}
+			}
+			prevDays = append(prevDays, map[string]interface{}{"day_index": d, "is_completed": dayComplete})
+		}
+
+		result = append(result, map[string]interface{}{
+			"user_goal":     ug,
+			"day_index":     days,
+			"missions":      mwts,
+			"previous_days": prevDays,
+		})
 	}
 
 	return c.Status(fiber.StatusOK).JSON(result)
@@ -390,10 +415,7 @@ func GetGoalSummaries(c *fiber.Ctx) error {
 		}
 		if len(summaries) == 0 {
 			ugq := queries.GoalsQueries{DB: database.DB}
-			ugs, err := ugq.GetUserGoalsByUser(userID)
-			if err != nil {
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to get user goals"})
-			}
+			ugs, _ := ugq.GetUserGoalsByUser(userID)
 			for _, ug := range ugs {
 				summary, err := gq.BuildGoalSummary(ug, userID)
 				if err != nil {

@@ -115,6 +115,23 @@ func (q *UserQueries) VerifyOTPByEmail(email string, otp string) error {
 	return nil
 }
 
+// UpdateOTPByEmail updates the OTP for a user identified by email
+func (q *UserQueries) UpdateOTPByEmail(email string, otp string) error {
+	query := `UPDATE users SET otp = $1, updated_at = now() WHERE email = $2`
+	res, err := q.DB.Exec(query, otp, email)
+	if err != nil {
+		return errors.New("unable to update otp, DB error")
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return errors.New("no user updated")
+	}
+	return nil
+}
+
 func (q *UserQueries) UpdateUser(userID uuid.UUID, req *models.UpdateUserRequest) error {
 	setClauses := []string{}
 	args := []interface{}{}

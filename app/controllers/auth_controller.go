@@ -59,6 +59,10 @@ func UserSignUp(c *fiber.Ctx) error {
 			if err != nil {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate OTP"})
 			}
+			if err := userQueries.UpdateOTPByEmail(signUp.Email, otp); err != nil {
+				println(err.Error())
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update OTP"})
+			}
 			if err := utils.SendOTPEmail(signUp.Email, otp); err != nil {
 				println(
 					err.Error(),
