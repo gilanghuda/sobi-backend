@@ -17,7 +17,7 @@ type UserQueries struct {
 func (q *UserQueries) GetUserByID(id uuid.UUID) (models.User, error) {
 	user := models.User{}
 
-	query := `SELECT uid, username, user_role, email, gender, avatar, password_hash, verified,  created_at, updated_at
+	query := `SELECT uid, username, user_role, email, phone_number, gender, avatar, password_hash, verified,  created_at, updated_at
 			  FROM users WHERE uid = $1`
 
 	err := q.DB.QueryRow(query, id).Scan(
@@ -25,6 +25,7 @@ func (q *UserQueries) GetUserByID(id uuid.UUID) (models.User, error) {
 		&user.Username,
 		&user.UserRole,
 		&user.Email,
+		&user.PhoneNumber,
 		&user.Gender,
 		&user.Avatar,
 		&user.PasswordHash,
