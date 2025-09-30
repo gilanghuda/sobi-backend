@@ -66,28 +66,28 @@ func (q *GoalsQueries) CountMissionsForDayRange(days int) (int, error) {
 	return cnt, nil
 }
 
-func (q *GoalsQueries) CountTasksForMissions(days int) (int, error) {
+func (q *GoalsQueries) CountTasksForMissions(category string, days int) (int, error) {
 	var cnt int
-	query := `SELECT count(t.id) FROM tasks t JOIN missions m ON t.mission_id = m.id WHERE m.day_number <= $1`
-	if err := q.DB.QueryRow(query, days).Scan(&cnt); err != nil {
+	query := `SELECT count(t.id) FROM tasks t JOIN missions m ON t.mission_id = m.id WHERE m.day_number <= $1 AND m.category = $2`
+	if err := q.DB.QueryRow(query, days, category).Scan(&cnt); err != nil {
 		return 0, errors.New("unable to count tasks")
 	}
 	return cnt, nil
 }
 
-func (q *GoalsQueries) CountMissionProgressCompleted(userGoalID uuid.UUID, days int) (int, error) {
+func (q *GoalsQueries) CountMissionProgressCompleted(userGoalID uuid.UUID, days int, userID uuid.UUID) (int, error) {
 	var cnt int
-	query := `SELECT count(mp.id) FROM mission_progress mp JOIN missions m ON mp.mission_id = m.id WHERE mp.user_goal_id = $1 AND m.day_number <= $2 AND mp.is_completed = true`
-	if err := q.DB.QueryRow(query, userGoalID, days).Scan(&cnt); err != nil {
+	query := `SELECT count(mp.id) FROM mission_progress mp JOIN missions m ON mp.mission_id = m.id WHERE mp.user_goal_id = $1 AND m.day_number <= $2 AND mp.user_id = $3 AND mp.is_completed = true`
+	if err := q.DB.QueryRow(query, userGoalID, days, userID).Scan(&cnt); err != nil {
 		return 0, errors.New("unable to count completed missions")
 	}
 	return cnt, nil
 }
 
-func (q *GoalsQueries) CountTaskProgressCompleted(userGoalID uuid.UUID, days int) (int, error) {
+func (q *GoalsQueries) CountTaskProgressCompleted(userGoalID uuid.UUID, days int, userID uuid.UUID) (int, error) {
 	var cnt int
-	query := `SELECT count(tp.id) FROM task_progress tp JOIN tasks t ON tp.task_id = t.id JOIN missions m ON t.mission_id = m.id WHERE tp.user_goal_id = $1 AND m.day_number <= $2 AND tp.is_completed = true`
-	if err := q.DB.QueryRow(query, userGoalID, days).Scan(&cnt); err != nil {
+	query := `SELECT count(tp.id) FROM task_progress tp JOIN tasks t ON tp.task_id = t.id JOIN missions m ON t.mission_id = m.id WHERE tp.user_goal_id = $1 AND m.day_number <= $2 AND tp.user_id = $3 AND tp.is_completed = true`
+	if err := q.DB.QueryRow(query, userGoalID, days, userID).Scan(&cnt); err != nil {
 		return 0, errors.New("unable to count completed tasks")
 	}
 	return cnt, nil
@@ -176,42 +176,27 @@ func (q *GoalsQueries) CountTasksForCategory(category string) (int, error) {
 func (q *GoalsQueries) BuildGoalSummary(ug models.UserGoal, userID uuid.UUID) (models.GoalSummary, error) {
 	var s models.GoalSummary
 
-	totalDays, err := q.GetMaxMissionDayForCategory(ug.GoalCategory)
-	if err != nil {
-		return s, err
-	}
-	if totalDays <= 0 {
-		totalDays = int(ug.TargetEndDate.Sub(ug.StartDate).Hours()/24) + 1
-		if totalDays < 0 {
-			totalDays = 0
-		}
+	totalDays := int(ug.TargetEndDate.Sub(ug.StartDate).Hours()/24) + 1
+	if totalDays < 0 {
+		totalDays = 0
 	}
 
-	today := time.Now()
-	dayIndex := int(today.Sub(ug.StartDate).Hours()/24) + 1
+	dayIndex := totalDays
 	if dayIndex < 1 {
 		dayIndex = 1
 	}
-	if totalDays > 0 && dayIndex > totalDays {
-		if dayIndex > totalDays {
-			dayIndex = totalDays
-		}
-	}
 
-	totalMissions, err := q.CountMissionsForCategory(ug.GoalCategory)
-	if err != nil {
-		return s, err
-	}
-	totalTasks, err := q.CountTasksForCategory(ug.GoalCategory)
+	totalMissions := totalDays
+	totalTasks, err := q.CountTasksForMissions(ug.GoalCategory, totalDays)
 	if err != nil {
 		return s, err
 	}
 
-	missionsCompleted, err := q.CountMissionProgressCompleted(ug.ID, dayIndex)
+	missionsCompleted, err := q.CountMissionProgressCompleted(ug.ID, dayIndex, userID)
 	if err != nil {
 		return s, err
 	}
-	tasksCompleted, err := q.CountTaskProgressCompleted(ug.ID, dayIndex)
+	tasksCompleted, err := q.CountTaskProgressCompleted(ug.ID, dayIndex, userID)
 	if err != nil {
 		return s, err
 	}

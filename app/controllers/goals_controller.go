@@ -329,37 +329,27 @@ func CreateGoalSummary(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User goal not found"})
 	}
 
-	totalDays, err := gq.GetMaxMissionDayForCategory(ug.GoalCategory)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to determine total days"})
-	}
-	if totalDays <= 0 {
-		totalDays = int(ug.TargetEndDate.Sub(ug.StartDate).Hours()/24) + 1
-		if totalDays < 0 {
-			totalDays = 0
-		}
+	totalDays := int(ug.TargetEndDate.Sub(ug.StartDate).Hours()/24) + 1
+	if totalDays < 0 {
+		totalDays = 0
 	}
 
-	today := time.Now()
-	dayIndex := int(today.Sub(ug.StartDate).Hours()/24) + 1
+	dayIndex := totalDays
 	if dayIndex < 1 {
 		dayIndex = 1
 	}
 
-	totalMissions, err := gq.CountMissionsForCategory(ug.GoalCategory)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to count missions"})
-	}
-	totalTasks, err := gq.CountTasksForCategory(ug.GoalCategory)
+	totalMissions := totalDays
+	totalTasks, err := gq.CountTasksForMissions(ug.GoalCategory, totalDays)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to count tasks"})
 	}
 
-	missionsCompleted, err := gq.CountMissionProgressCompleted(ugid, dayIndex)
+	missionsCompleted, err := gq.CountMissionProgressCompleted(ugid, dayIndex, userID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to count completed missions"})
 	}
-	tasksCompleted, err := gq.CountTaskProgressCompleted(ugid, dayIndex)
+	tasksCompleted, err := gq.CountTaskProgressCompleted(ugid, dayIndex, userID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to count completed tasks"})
 	}
