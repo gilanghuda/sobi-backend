@@ -197,3 +197,39 @@ func (q *UserQueries) DeleteUser(id uuid.UUID) error {
 
 	return nil
 }
+
+func (q *UserQueries) GetUsersByRole(role string) ([]models.User, error) {
+	users := []models.User{}
+	query := `SELECT uid, username, user_role, email, phone_number, gender, avatar, password_hash, verified, created_at, updated_at FROM users WHERE user_role = $1`
+	rows, err := q.DB.Query(query, role)
+	if err != nil {
+		return users, errors.New("unable to get users, DB error")
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var user models.User
+		if err := rows.Scan(
+			&user.ID,
+			&user.Username,
+			&user.UserRole,
+			&user.Email,
+			&user.PhoneNumber,
+			&user.Gender,
+			&user.Avatar,
+			&user.PasswordHash,
+			&user.Verified,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+		); err != nil {
+			return users, errors.New("error scanning user row")
+		}
+		users = append(users, user)
+	}
+
+	if err := rows.Err(); err != nil {
+		return users, errors.New("error iterating user rows")
+	}
+
+	return users, nil
+}

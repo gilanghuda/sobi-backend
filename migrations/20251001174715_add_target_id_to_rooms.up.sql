@@ -1,0 +1,2 @@
+ALTER TABLE rooms
+ADD COLUMN target_id uuid REFERENCES users(uid) ON DELETE CASCADE;

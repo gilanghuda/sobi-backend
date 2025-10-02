@@ -7,12 +7,13 @@ import (
 )
 
 type Room struct {
-	ID        uuid.UUID `json:"id" db:"id"`
-	OwnerID   uuid.UUID `json:"owner_id" db:"owner_id"`
-	Category  string    `json:"category" db:"category"`
-	Visible   bool      `json:"visible" db:"visible"`
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+	ID        uuid.UUID  `json:"id" db:"id"`
+	OwnerID   uuid.UUID  `json:"owner_id" db:"owner_id"`
+	TargetID  *uuid.UUID `json:"target_id,omitempty" db:"target_id"`
+	Category  string     `json:"category" db:"category"`
+	Visible   bool       `json:"visible" db:"visible"`
+	CreatedAt time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at" db:"updated_at"`
 }
 
 type Message struct {
@@ -27,6 +28,7 @@ type Message struct {
 type CreateRoomRequest struct {
 	Category string `json:"category,omitempty"`
 	Visible  bool   `json:"visible,omitempty"`
+	TargetID string `json:"target_id,omitempty"`
 }
 
 type CreateMessageRequest struct {
@@ -38,4 +40,11 @@ type CreateMessageRequest struct {
 type MatchRequest struct {
 	Category string `json:"category,omitempty"`
 	Role     string `json:"role,omitempty"`
+}
+
+type RecentChat struct {
+	OtherUserID uuid.UUID `json:"other_user_id"`
+	RoomID      uuid.UUID `json:"room_id"`
+	LastMessage string    `json:"last_message"`
+	LastAt      time.Time `json:"last_at"`
 }

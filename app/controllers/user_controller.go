@@ -139,3 +139,19 @@ func DeleteUser(c *fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "User deleted"})
 }
+
+func GetAhliUsers(c *fiber.Ctx) error {
+	userQueries := queries.UserQueries{DB: database.DB}
+	users, err := userQueries.GetUsersByRole("ahli")
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "unable to get users"})
+	}
+
+	// clear sensitive fields
+	for i := range users {
+		users[i].PasswordHash = ""
+		users[i].OTP = ""
+	}
+
+	return c.Status(fiber.StatusOK).JSON(users)
+}

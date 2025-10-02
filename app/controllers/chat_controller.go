@@ -18,25 +18,12 @@ type client struct {
 	uid  uuid.UUID
 }
 
-var hubs = make(map[string]map[*client]bool)
+var hub = make(map[*client]bool)
 
-// simple in-memory matchmaking queues per category
-var pendengarQueue = make(map[string][]uuid.UUID) // category -> []userID
-var penceritaQueue = make(map[string][]uuid.UUID) // category -> []userID
+var pendengarQueue = make(map[string][]uuid.UUID)
+var penceritaQueue = make(map[string][]uuid.UUID)
 
 func WsHandler(c *websocket.Conn) {
-	roomIDStr := c.Query("room_id")
-	if roomIDStr == "" {
-		c.WriteMessage(websocket.TextMessage, []byte("room_id required"))
-		c.Close()
-		return
-	}
-	roomID, err := uuid.Parse(roomIDStr)
-	if err != nil {
-		c.WriteMessage(websocket.TextMessage, []byte("invalid room_id"))
-		c.Close()
-		return
-	}
 	token := c.Query("token")
 	var userID uuid.UUID
 	if token != "" {
@@ -45,13 +32,10 @@ func WsHandler(c *websocket.Conn) {
 	}
 
 	cl := &client{conn: c, uid: userID}
-	if _, ok := hubs[roomID.String()]; !ok {
-		hubs[roomID.String()] = make(map[*client]bool)
-	}
-	hubs[roomID.String()][cl] = true
+	hub[cl] = true
 
 	defer func() {
-		delete(hubs[roomID.String()], cl)
+		delete(hub, cl)
 		c.Close()
 	}()
 
@@ -60,13 +44,12 @@ func WsHandler(c *websocket.Conn) {
 		if err != nil {
 			break
 		}
-		for cc := range hubs[roomID.String()] {
+		for cc := range hub {
 			if cc == cl {
 				continue
 			}
 			cc.conn.WriteMessage(mt, msg)
 		}
-		_ = msg
 	}
 }
 
@@ -82,7 +65,14 @@ func CreateRoom(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid body"})
 	}
 
-	r := &models.Room{ID: uuid.New(), OwnerID: userID, Category: req.Category, Visible: req.Visible, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	var targetPtr *uuid.UUID
+	if req.TargetID != "" {
+		if tid, err := uuid.Parse(req.TargetID); err == nil {
+			targetPtr = &tid
+		}
+	}
+
+	r := &models.Room{ID: uuid.New(), OwnerID: userID, TargetID: targetPtr, Category: req.Category, Visible: req.Visible, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 	q := queries.ChatQueries{DB: database.DB}
 	if err := q.CreateRoom(r); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create room"})
@@ -128,12 +118,7 @@ func PostMessage(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create message"})
 	}
 
-	if clients, ok := hubs[roomID.String()]; ok {
-		b, _ := json.Marshal(m)
-		for cl := range clients {
-			cl.conn.WriteMessage(websocket.TextMessage, b)
-		}
-	}
+	_, _ = json.Marshal(m)
 	return c.Status(fiber.StatusCreated).JSON(m)
 }
 
@@ -160,7 +145,37 @@ func GetMessagesByRoom(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(msgs)
 }
 
-// MatchHandler pairs users based on role and category
+func GetRecentChats(c *fiber.Ctx) error {
+	authHeader := c.Get("Authorization")
+	userID, err := utils.ExtractUserIDFromHeader(authHeader)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	limit := 50
+	q := queries.ChatQueries{DB: database.DB}
+	recent, err := q.GetRecentChats(userID, limit)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get recent chats"})
+	}
+	return c.Status(fiber.StatusOK).JSON(recent)
+}
+
+func GetRecentChatsAsTarget(c *fiber.Ctx) error {
+	authHeader := c.Get("Authorization")
+	userID, err := utils.ExtractUserIDFromHeader(authHeader)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
+	}
+	limit := 50
+	q := queries.ChatQueries{DB: database.DB}
+	recent, err := q.GetRecentChatsAsTarget(userID, limit)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get recent chats"})
+	}
+	return c.Status(fiber.StatusOK).JSON(recent)
+}
+
 func MatchHandler(c *fiber.Ctx) error {
 	authHeader := c.Get("Authorization")
 	userID, err := utils.ExtractUserIDFromHeader(authHeader)
@@ -180,37 +195,33 @@ func MatchHandler(c *fiber.Ctx) error {
 		cat = "default"
 	}
 
-	// try to find opposite role
 	if payload.Role == "pendengar" {
-		// check pencerita queue
 		if q, ok := penceritaQueue[cat]; ok && len(q) > 0 {
 			otherID := q[0]
 			penceritaQueue[cat] = q[1:]
-			// create room
-			r := &models.Room{ID: uuid.New(), OwnerID: otherID, Category: cat, Visible: false, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+			r := &models.Room{ID: uuid.New(), OwnerID: userID, TargetID: &otherID, Category: cat, Visible: false, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 			qq := queries.ChatQueries{DB: database.DB}
 			if err := qq.CreateRoom(r); err != nil {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create room"})
 			}
 			return c.Status(fiber.StatusOK).JSON(fiber.Map{"room_id": r.ID, "matched_with": otherID})
 		}
-		// enqueue
+
 		pendengarQueue[cat] = append(pendengarQueue[cat], userID)
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "queued"})
 	}
 
-	// role pencerita
 	if q, ok := pendengarQueue[cat]; ok && len(q) > 0 {
 		otherID := q[0]
 		pendengarQueue[cat] = q[1:]
-		r := &models.Room{ID: uuid.New(), OwnerID: otherID, Category: cat, Visible: false, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+		r := &models.Room{ID: uuid.New(), OwnerID: otherID, TargetID: &userID, Category: cat, Visible: false, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 		qq := queries.ChatQueries{DB: database.DB}
 		if err := qq.CreateRoom(r); err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create room"})
 		}
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{"room_id": r.ID, "matched_with": otherID})
 	}
-	// enqueue
+
 	penceritaQueue[cat] = append(penceritaQueue[cat], userID)
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "queued"})
 }
