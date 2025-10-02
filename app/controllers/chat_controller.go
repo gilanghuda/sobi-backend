@@ -124,7 +124,7 @@ func PostMessage(c *fiber.Ctx) error {
 
 func GetMessagesByRoom(c *fiber.Ctx) error {
 	authHeader := c.Get("Authorization")
-	_, err := utils.ExtractUserIDFromHeader(authHeader)
+	userID, err := utils.ExtractUserIDFromHeader(authHeader)
 	if err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -142,7 +142,31 @@ func GetMessagesByRoom(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get messages"})
 	}
-	return c.Status(fiber.StatusOK).JSON(msgs)
+
+	type Message struct {
+		ID        uuid.UUID `json:"id"`
+		RoomID    uuid.UUID `json:"room_id"`
+		UserID    uuid.UUID `json:"user_id"`
+		Text      string    `json:"text"`
+		Visible   bool      `json:"visible"`
+		CreatedAt time.Time `json:"created_at"`
+		IsMe      bool      `json:"is_me"`
+	}
+
+	out := make([]Message, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, Message{
+			ID:        m.ID,
+			RoomID:    m.RoomID,
+			UserID:    m.UserID,
+			Text:      m.Text,
+			Visible:   m.Visible,
+			CreatedAt: m.CreatedAt,
+			IsMe:      m.UserID == userID,
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(out)
 }
 
 func GetRecentChats(c *fiber.Ctx) error {
