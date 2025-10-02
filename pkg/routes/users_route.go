@@ -13,6 +13,7 @@ func RegisterUserRoutes(app *fiber.App) {
 	app.Post("/verify-otp", controllers.UserVerifyOTP)
 	app.Post("/refresh-token", controllers.RefreshToken)
 	app.Get("/get-ahli", controllers.GetAhliUsers)
+	app.Get("/user/:id", controllers.GetUserByID)
 
 	user := app.Group("/user", middleware.JWTProtected())
 	user.Get("/profile", controllers.UserProfile)

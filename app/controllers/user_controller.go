@@ -155,3 +155,27 @@ func GetAhliUsers(c *fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(users)
 }
+
+func GetUserByID(c *fiber.Ctx) error {
+	idStr := c.Params("id")
+	if idStr == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "missing user id"})
+	}
+
+	userID, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid user id"})
+	}
+
+	userQueries := queries.UserQueries{DB: database.DB}
+	user, err := userQueries.GetUserByID(userID)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "user not found"})
+	}
+
+	// clear sensitive fields
+	user.PasswordHash = ""
+	user.OTP = ""
+
+	return c.Status(fiber.StatusOK).JSON(user)
+}
