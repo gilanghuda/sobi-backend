@@ -3,6 +3,7 @@ package queries
 import (
 	"database/sql"
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/gilanghuda/sobi-backend/app/models"
@@ -93,9 +94,7 @@ func (q *ChatQueries) GetMessagesByRoom(roomID uuid.UUID, limit int) ([]models.M
 	return res, nil
 }
 
-// GetRecentChats returns list of recent chat partners for a user with last message and timestamp
 func (q *ChatQueries) GetRecentChats(userID uuid.UUID, limit int) ([]models.RecentChat, error) {
-	// get latest message per room where user is owner or target
 	rows, err := q.DB.Query(`
 	SELECT r.id, r.owner_id, r.target_id, m.text, m.created_at
 	FROM rooms r
@@ -105,13 +104,13 @@ func (q *ChatQueries) GetRecentChats(userID uuid.UUID, limit int) ([]models.Rece
 	WHERE r.owner_id = $1 OR r.target_id = $1
 	ORDER BY m.created_at DESC
 	LIMIT $2
-	`, userID, limit)
+	`, userID, limit*5)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var out []models.RecentChat
+	recentMap := make(map[uuid.UUID]models.RecentChat)
 	for rows.Next() {
 		var roomID uuid.UUID
 		var owner uuid.UUID
@@ -130,15 +129,34 @@ func (q *ChatQueries) GetRecentChats(userID uuid.UUID, limit int) ([]models.Rece
 				other = owner
 			}
 		} else {
-			// no explicit target, pick owner if not user
 			if owner == userID {
 				other = uuid.Nil
 			} else {
 				other = owner
 			}
 		}
-		out = append(out, models.RecentChat{OtherUserID: other, RoomID: roomID, LastMessage: text.String, LastAt: createdAt})
+
+		if other == uuid.Nil || other == userID {
+			continue
+		}
+
+		rc, ok := recentMap[other]
+		if !ok || createdAt.After(rc.LastAt) {
+			recentMap[other] = models.RecentChat{OtherUserID: other, RoomID: roomID, LastMessage: text.String, LastAt: createdAt}
+		}
 	}
+
+	out := make([]models.RecentChat, 0, len(recentMap))
+	for _, v := range recentMap {
+		out = append(out, v)
+	}
+
+	sort.Slice(out, func(i, j int) bool { return out[i].LastAt.After(out[j].LastAt) })
+
+	if len(out) > limit {
+		out = out[:limit]
+	}
+
 	return out, nil
 }
 

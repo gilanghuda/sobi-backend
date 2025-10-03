@@ -359,7 +359,6 @@ func MatchHandler(c *fiber.Ctx) error {
 
 func ChatWithGemini(c *fiber.Ctx) error {
 	authHeader := c.Get("Authorization")
-	// allow both authenticated and anonymous usage
 	_, _ = utils.ExtractUserIDFromHeader(authHeader)
 
 	payload := struct {
@@ -372,7 +371,6 @@ func ChatWithGemini(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "prompt required"})
 	}
 
-	// simple one-shot request to Gemini (no history persistence)
 	reply, err := utils.QueryGemini(payload.Prompt)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "gemini error: " + err.Error()})
