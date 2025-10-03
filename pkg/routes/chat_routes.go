@@ -13,6 +13,8 @@ func RegisterChatRoutes(app *fiber.App) {
 	chat.Post("/messages", controllers.PostMessage)
 	chat.Get("/messages", controllers.GetMessagesByRoom)
 	chat.Post("/match", controllers.MatchHandler)
+	chat.Post("/find-match", controllers.FindMatch)
+	chat.Post("/matchmaking", controllers.MatchmakingHandler)
 	chat.Get("/recent", controllers.GetRecentChats)
 	chat.Get("/recent/target", controllers.GetRecentChatsAsTarget)
 	chat.Get("/active", controllers.GetActiveRoom)

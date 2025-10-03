@@ -28,6 +28,8 @@ var messageChan = make(chan *models.Message, 100)
 var clientsByUser = make(map[uuid.UUID]map[*client]bool)
 var clientsMu sync.RWMutex
 
+var queueMu sync.Mutex
+
 func init() {
 	go func() {
 		for m := range messageChan {
@@ -55,6 +57,8 @@ func init() {
 			clientsMu.RUnlock()
 		}
 	}()
+
+	go StartMatchmaking()
 }
 
 func WsHandler(c *websocket.Conn) {
@@ -357,6 +361,86 @@ func MatchHandler(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "queued"})
 }
 
+func FindMatch(c *fiber.Ctx) error {
+	uidStr := c.Query("uid")
+	if uidStr == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "uid required as query param"})
+	}
+	uid, err := uuid.Parse(uidStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid uid"})
+	}
+	role := c.Query("role")
+	if role == "" {
+		role = "pendengar"
+	}
+	if role != "pendengar" && role != "pencerita" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "role must be pendengar or pencerita"})
+	}
+	cat := c.Query("category")
+	if cat == "" {
+		cat = "default"
+	}
+
+	queueMu.Lock()
+	defer queueMu.Unlock()
+	if role == "pendengar" {
+		pendengarQueue[cat] = append(pendengarQueue[cat], uid)
+	} else {
+		penceritaQueue[cat] = append(penceritaQueue[cat], uid)
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "queued", "role": role, "category": cat})
+}
+
+func StartMatchmaking() {
+	for {
+		queueMu.Lock()
+		for cat, pendList := range pendengarQueue {
+			if len(pendList) == 0 {
+				continue
+			}
+			pc, ok := penceritaQueue[cat]
+			if !ok || len(pc) == 0 {
+				continue
+			}
+			pend := pendList[0]
+			pencer := pc[0]
+			pendengarQueue[cat] = pendList[1:]
+			penceritaQueue[cat] = pc[1:]
+
+			r := &models.Room{ID: uuid.New(), OwnerID: pend, TargetID: &pencer, Category: cat, Visible: false, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+			qq := queries.ChatQueries{DB: database.DB}
+			if err := qq.CreateRoom(r); err != nil {
+				continue
+			}
+
+			notifA := map[string]interface{}{"event": "matched", "room_id": r.ID, "matched_with": pencer}
+			notifB := map[string]interface{}{"event": "matched", "room_id": r.ID, "matched_with": pend}
+			ba, _ := json.Marshal(notifA)
+			bb, _ := json.Marshal(notifB)
+			clientsMu.RLock()
+			if conns, ok := clientsByUser[pend]; ok {
+				for cc := range conns {
+					if cc.conn != nil {
+						cc.conn.WriteMessage(websocket.TextMessage, ba)
+					}
+				}
+			}
+			if conns, ok := clientsByUser[pencer]; ok {
+				for cc := range conns {
+					if cc.conn != nil {
+						cc.conn.WriteMessage(websocket.TextMessage, bb)
+					}
+				}
+			}
+			clientsMu.RUnlock()
+		}
+		queueMu.Unlock()
+		time.Sleep(500 * time.Millisecond)
+	}
+}
+
 func ChatWithGemini(c *fiber.Ctx) error {
 	authHeader := c.Get("Authorization")
 	_, _ = utils.ExtractUserIDFromHeader(authHeader)
@@ -376,4 +460,101 @@ func ChatWithGemini(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "gemini error: " + err.Error()})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"reply": reply})
+}
+
+func MatchmakingHandler(c *fiber.Ctx) error {
+	authHeader := c.Get("Authorization")
+	userID, err := utils.ExtractUserIDFromHeader(authHeader)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	payload := &models.MatchRequest{}
+	if err := c.BodyParser(payload); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid body"})
+	}
+	if payload.Role != "pendengar" && payload.Role != "pencerita" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "role must be pendengar or pencerita"})
+	}
+	cat := payload.Category
+	if cat == "" {
+		cat = "default"
+	}
+
+	queueMu.Lock()
+	defer queueMu.Unlock()
+
+	qdb := queries.ChatQueries{DB: database.DB}
+
+	if payload.Role == "pendengar" {
+		if q, ok := penceritaQueue[cat]; ok && len(q) > 0 {
+			otherID := q[0]
+			penceritaQueue[cat] = q[1:]
+			r := &models.Room{ID: uuid.New(), OwnerID: userID, TargetID: &otherID, Category: cat, Visible: false, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+			if err := qdb.CreateRoom(r); err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create room"})
+			}
+
+			notif := map[string]interface{}{"event": "matched", "room_id": r.ID, "matched_with": otherID}
+			notifOther := map[string]interface{}{"event": "matched", "room_id": r.ID, "matched_with": userID}
+			b1, _ := json.Marshal(notif)
+			b2, _ := json.Marshal(notifOther)
+			clientsMu.RLock()
+			if conns, ok := clientsByUser[userID]; ok {
+				for cc := range conns {
+					if cc.conn != nil {
+						cc.conn.WriteMessage(websocket.TextMessage, b1)
+					}
+				}
+			}
+			if conns, ok := clientsByUser[otherID]; ok {
+				for cc := range conns {
+					if cc.conn != nil {
+						cc.conn.WriteMessage(websocket.TextMessage, b2)
+					}
+				}
+			}
+			clientsMu.RUnlock()
+
+			return c.Status(fiber.StatusOK).JSON(fiber.Map{"room_id": r.ID, "matched_with": otherID})
+		}
+
+		pendengarQueue[cat] = append(pendengarQueue[cat], userID)
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "queued"})
+	}
+
+	if q, ok := pendengarQueue[cat]; ok && len(q) > 0 {
+		otherID := q[0]
+		pendengarQueue[cat] = q[1:]
+		r := &models.Room{ID: uuid.New(), OwnerID: otherID, TargetID: &userID, Category: cat, Visible: false, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+		if err := qdb.CreateRoom(r); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create room"})
+		}
+
+		notif := map[string]interface{}{"event": "matched", "room_id": r.ID, "matched_with": otherID}
+		notifOther := map[string]interface{}{"event": "matched", "room_id": r.ID, "matched_with": userID}
+		b1, _ := json.Marshal(notif)
+		b2, _ := json.Marshal(notifOther)
+		clientsMu.RLock()
+		if conns, ok := clientsByUser[userID]; ok {
+			for cc := range conns {
+				if cc.conn != nil {
+					cc.conn.WriteMessage(websocket.TextMessage, b1)
+				}
+			}
+		}
+		if conns, ok := clientsByUser[otherID]; ok {
+			for cc := range conns {
+				if cc.conn != nil {
+					cc.conn.WriteMessage(websocket.TextMessage, b2)
+				}
+			}
+		}
+		clientsMu.RUnlock()
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{"room_id": r.ID, "matched_with": otherID})
+	}
+
+	penceritaQueue[cat] = append(penceritaQueue[cat], userID)
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "queued"})
 }
