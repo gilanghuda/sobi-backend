@@ -359,13 +359,10 @@ func MatchHandler(c *fiber.Ctx) error {
 
 func ChatWithGemini(c *fiber.Ctx) error {
 	authHeader := c.Get("Authorization")
-	userID, err := utils.ExtractUserIDFromHeader(authHeader)
-	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
-	}
+	// allow both authenticated and anonymous usage
+	_, _ = utils.ExtractUserIDFromHeader(authHeader)
 
 	payload := struct {
-		RoomID string `json:"room_id,omitempty"`
 		Prompt string `json:"prompt"`
 	}{}
 	if err := c.BodyParser(&payload); err != nil {
@@ -374,77 +371,11 @@ func ChatWithGemini(c *fiber.Ctx) error {
 	if payload.Prompt == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "prompt required"})
 	}
-	if payload.RoomID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "room_id required"})
-	}
 
-	roomID, err := uuid.Parse(payload.RoomID)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid room_id"})
-	}
-
-	q := queries.ChatQueries{DB: database.DB}
-	conv, err := q.BuildConversationForGemini(roomID, userID, payload.Prompt, 100)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to build conversation"})
-	}
-
-	reply, err := utils.QueryGemini(conv)
+	// simple one-shot request to Gemini (no history persistence)
+	reply, err := utils.QueryGemini(payload.Prompt)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "gemini error: " + err.Error()})
 	}
-
-	userMsg := &models.Message{
-		ID:        uuid.New(),
-		RoomID:    roomID,
-		UserID:    userID,
-		Text:      payload.Prompt,
-		Visible:   true,
-		CreatedAt: time.Now(),
-	}
-	if err := q.CreateMessage(userMsg); err == nil {
-		go func(m *models.Message) { messageChan <- m }(userMsg)
-	}
-
-	botUUID, botFound, _ := q.GetBotIDForUser(userID)
-
-	if botFound {
-		botMsg := &models.Message{
-			ID:        uuid.New(),
-			RoomID:    roomID,
-			UserID:    botUUID,
-			Text:      reply,
-			Visible:   true,
-			CreatedAt: time.Now(),
-		}
-		if err := q.CreateMessage(botMsg); err == nil {
-			go func(m *models.Message) { messageChan <- m }(botMsg)
-		}
-	}
-
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"reply": reply})
-}
-
-func GetGeminiHistory(c *fiber.Ctx) error {
-	authHeader := c.Get("Authorization")
-	userID, err := utils.ExtractUserIDFromHeader(authHeader)
-	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
-	}
-	roomIDStr := c.Query("room_id")
-	if roomIDStr == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "room_id required"})
-	}
-	roomID, err := uuid.Parse(roomIDStr)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid room_id"})
-	}
-
-	q := queries.ChatQueries{DB: database.DB}
-	msgs, err := q.GetGeminiHistory(roomID, userID, 200)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to load messages"})
-	}
-
-	return c.Status(fiber.StatusOK).JSON(msgs)
 }

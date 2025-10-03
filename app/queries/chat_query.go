@@ -3,7 +3,6 @@ package queries
 import (
 	"database/sql"
 	"errors"
-	"os"
 	"time"
 
 	"github.com/gilanghuda/sobi-backend/app/models"
@@ -173,9 +172,6 @@ func (q *ChatQueries) GetRecentChatsAsTarget(userID uuid.UUID, limit int) ([]mod
 	return out, nil
 }
 
-// GetActiveRoom finds a room where the given user is owner or target and
-// the room was created between startTime and endTime (inclusive). Returns
-// an error "no active room" when none found.
 func (q *ChatQueries) GetActiveRoom(userID uuid.UUID, startTime, endTime time.Time) (models.Room, error) {
 	r := models.Room{}
 	query := `SELECT id, owner_id, target_id, category, visible, created_at, updated_at FROM rooms WHERE (owner_id = $1 OR target_id = $1) AND created_at >= $2 AND created_at <= $3 ORDER BY created_at DESC LIMIT 1`
@@ -193,66 +189,4 @@ func (q *ChatQueries) GetActiveRoom(userID uuid.UUID, startTime, endTime time.Ti
 		}
 	}
 	return r, nil
-}
-
-func (q *ChatQueries) GetBotIDForUser(userID uuid.UUID) (uuid.UUID, bool, error) {
-	var botID sql.NullString
-	if err := q.DB.QueryRow("SELECT bot_id FROM users WHERE uid = $1", userID).Scan(&botID); err == nil {
-		if botID.Valid {
-			if bu, err := uuid.Parse(botID.String); err == nil {
-				return bu, true, nil
-			}
-		}
-	} else if err != sql.ErrNoRows {
-		// DB error
-		return uuid.Nil, false, err
-	}
-
-	// fallback to env
-	if env := os.Getenv("BOT_USER_ID"); env != "" {
-		if bu, err := uuid.Parse(env); err == nil {
-			return bu, true, nil
-		}
-	}
-
-	return uuid.Nil, false, nil
-}
-
-func (q *ChatQueries) BuildConversationForGemini(roomID, userID uuid.UUID, prompt string, limit int) (string, error) {
-	msgs, err := q.GetMessagesByRoom(roomID, limit)
-	if err != nil {
-		return "", err
-	}
-	conv := ""
-	for _, hm := range msgs {
-		if hm.UserID == userID {
-			conv += "User: " + hm.Text + "\n"
-		} else {
-			conv += "Assistant: " + hm.Text + "\n"
-		}
-	}
-	conv += "User: " + prompt + "\nAssistant:"
-	return conv, nil
-}
-
-func (q *ChatQueries) GetGeminiHistory(roomID, userID uuid.UUID, limit int) ([]models.Message, error) {
-	msgs, err := q.GetMessagesByRoom(roomID, limit)
-	if err != nil {
-		return nil, err
-	}
-	botUUID, botFound, err := q.GetBotIDForUser(userID)
-	if err != nil {
-		botFound = false
-	}
-	out := make([]models.Message, 0, len(msgs))
-	for _, m := range msgs {
-		if m.UserID == userID {
-			out = append(out, m)
-			continue
-		}
-		if botFound && m.UserID == botUUID {
-			out = append(out, m)
-		}
-	}
-	return out, nil
 }
