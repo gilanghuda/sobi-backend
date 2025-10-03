@@ -3,6 +3,7 @@ package queries
 import (
 	"database/sql"
 	"errors"
+	"os"
 	"time"
 
 	"github.com/gilanghuda/sobi-backend/app/models"
@@ -142,9 +143,7 @@ func (q *ChatQueries) GetRecentChats(userID uuid.UUID, limit int) ([]models.Rece
 	return out, nil
 }
 
-// GetRecentChatsAsTarget returns list of recent chats where the given user is target_id (other participant = owner)
 func (q *ChatQueries) GetRecentChatsAsTarget(userID uuid.UUID, limit int) ([]models.RecentChat, error) {
-	// get latest message per room where user is target (so other participant is owner)
 	rows, err := q.DB.Query(`
 	SELECT r.id, r.owner_id, m.text, m.created_at
 	FROM rooms r
@@ -194,4 +193,66 @@ func (q *ChatQueries) GetActiveRoom(userID uuid.UUID, startTime, endTime time.Ti
 		}
 	}
 	return r, nil
+}
+
+func (q *ChatQueries) GetBotIDForUser(userID uuid.UUID) (uuid.UUID, bool, error) {
+	var botID sql.NullString
+	if err := q.DB.QueryRow("SELECT bot_id FROM users WHERE uid = $1", userID).Scan(&botID); err == nil {
+		if botID.Valid {
+			if bu, err := uuid.Parse(botID.String); err == nil {
+				return bu, true, nil
+			}
+		}
+	} else if err != sql.ErrNoRows {
+		// DB error
+		return uuid.Nil, false, err
+	}
+
+	// fallback to env
+	if env := os.Getenv("BOT_USER_ID"); env != "" {
+		if bu, err := uuid.Parse(env); err == nil {
+			return bu, true, nil
+		}
+	}
+
+	return uuid.Nil, false, nil
+}
+
+func (q *ChatQueries) BuildConversationForGemini(roomID, userID uuid.UUID, prompt string, limit int) (string, error) {
+	msgs, err := q.GetMessagesByRoom(roomID, limit)
+	if err != nil {
+		return "", err
+	}
+	conv := ""
+	for _, hm := range msgs {
+		if hm.UserID == userID {
+			conv += "User: " + hm.Text + "\n"
+		} else {
+			conv += "Assistant: " + hm.Text + "\n"
+		}
+	}
+	conv += "User: " + prompt + "\nAssistant:"
+	return conv, nil
+}
+
+func (q *ChatQueries) GetGeminiHistory(roomID, userID uuid.UUID, limit int) ([]models.Message, error) {
+	msgs, err := q.GetMessagesByRoom(roomID, limit)
+	if err != nil {
+		return nil, err
+	}
+	botUUID, botFound, err := q.GetBotIDForUser(userID)
+	if err != nil {
+		botFound = false
+	}
+	out := make([]models.Message, 0, len(msgs))
+	for _, m := range msgs {
+		if m.UserID == userID {
+			out = append(out, m)
+			continue
+		}
+		if botFound && m.UserID == botUUID {
+			out = append(out, m)
+		}
+	}
+	return out, nil
 }

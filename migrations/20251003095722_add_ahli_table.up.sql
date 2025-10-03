@@ -1,4 +1,4 @@
-CREATE TABLE ahli (
+CREATE TABLE user_ahli (
     uid UUID PRIMARY KEY,
     price DECIMAL(10,2),
     category VARCHAR(50) DEFAULT 'ahli agama',

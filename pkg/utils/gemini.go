@@ -9,24 +9,31 @@ import (
 	"os"
 )
 
-// QueryGemini sends the given prompt to a configured Gemini-compatible API
-// endpoint and returns a textual reply. Configure endpoint and key with
-// GEMINI_API_URL and GEMINI_API_KEY environment variables.
 func QueryGemini(prompt string) (string, error) {
-	url := os.Getenv("GEMINI_API_URL")
+	url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent"
 	key := os.Getenv("GEMINI_API_KEY")
 	if url == "" || key == "" {
 		return "", errors.New("gemini not configured")
 	}
 
-	reqBody := map[string]interface{}{"prompt": prompt}
+	reqBody := map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{
+				"parts": []map[string]string{
+					{"text": prompt},
+				},
+			},
+		},
+	}
+
 	b, _ := json.Marshal(reqBody)
-	req, err := http.NewRequest("POST", url, bytes.NewReader(b))
+
+	fullURL := url + "?key=" + key
+	req, err := http.NewRequest("POST", fullURL, bytes.NewReader(b))
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+key)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -45,32 +52,17 @@ func QueryGemini(prompt string) (string, error) {
 		return "", err
 	}
 
-	// Try common keys for text output
-	if out, ok := parsed["output"].(string); ok && out != "" {
-		return out, nil
-	}
-	if out, ok := parsed["response"].(string); ok && out != "" {
-		return out, nil
-	}
-	if out, ok := parsed["text"].(string); ok && out != "" {
-		return out, nil
-	}
-	if choices, ok := parsed["choices"].([]interface{}); ok && len(choices) > 0 {
-		first := choices[0]
-		switch f := first.(type) {
-		case map[string]interface{}:
-			if t, ok := f["text"].(string); ok && t != "" {
-				return t, nil
-			}
-			if m, ok := f["message"].(map[string]interface{}); ok {
-				if t2, ok := m["content"].(string); ok && t2 != "" {
-					return t2, nil
+	if cts, ok := parsed["candidates"].([]interface{}); ok && len(cts) > 0 {
+		first := cts[0].(map[string]interface{})
+		if content, ok := first["content"].(map[string]interface{}); ok {
+			if parts, ok := content["parts"].([]interface{}); ok && len(parts) > 0 {
+				if text, ok := parts[0].(map[string]interface{})["text"].(string); ok {
+					return text, nil
 				}
 			}
 		}
 	}
 
-	// fallback: marshal the whole response
 	b2, _ := json.Marshal(parsed)
 	return string(b2), nil
 }

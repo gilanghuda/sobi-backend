@@ -16,7 +16,8 @@ func RegisterChatRoutes(app *fiber.App) {
 	chat.Get("/recent", controllers.GetRecentChats)
 	chat.Get("/recent/target", controllers.GetRecentChatsAsTarget)
 	chat.Get("/active", controllers.GetActiveRoom)
-	chat.Post("/gemini", controllers.ChatWithGemini)
+	chat.Post("/bot-message", controllers.ChatWithGemini)
+	chat.Get("/get-history", controllers.GetGeminiHistory)
 
 	chat.Get("/ws", websocket.New(func(c *websocket.Conn) {
 		controllers.WsHandler(c)

@@ -163,16 +163,25 @@ func UserSignIn(c *fiber.Ctx) error {
 		})
 	}
 
-	accessMinutes := 15
-	if v := os.Getenv("ACCESS_TOKEN_MINUTES"); v != "" {
-		if iv, err := strconv.Atoi(v); err == nil {
+	// determine access token expiration: if ACCESS_TOKEN_MINUTES not set -> no expiration
+	accessEnv := os.Getenv("ACCESS_TOKEN_MINUTES")
+	setAccessExp := false
+	accessMinutes := 0
+	if accessEnv != "" {
+		if iv, err := strconv.Atoi(accessEnv); err == nil && iv > 0 {
 			accessMinutes = iv
+			setAccessExp = true
 		}
 	}
-	refreshHours := 24 * 7
-	if v := os.Getenv("REFRESH_TOKEN_HOURS"); v != "" {
-		if iv, err := strconv.Atoi(v); err == nil {
+
+	// determine refresh token expiration: if REFRESH_TOKEN_HOURS not set -> no expiration
+	refreshEnv := os.Getenv("REFRESH_TOKEN_HOURS")
+	setRefreshExp := false
+	refreshHours := 0
+	if refreshEnv != "" {
+		if iv, err := strconv.Atoi(refreshEnv); err == nil && iv > 0 {
 			refreshHours = iv
+			setRefreshExp = true
 		}
 	}
 
@@ -181,7 +190,9 @@ func UserSignIn(c *fiber.Ctx) error {
 		"user_id":   user.ID.String(),
 		"email":     user.Email,
 		"user_role": user.UserRole,
-		"exp":       time.Now().Add(time.Duration(accessMinutes) * time.Minute).Unix(),
+	}
+	if setAccessExp {
+		claims["exp"] = time.Now().Add(time.Duration(accessMinutes) * time.Minute).Unix()
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString([]byte(secret))
@@ -195,11 +206,16 @@ func UserSignIn(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate refresh token"})
 	}
+
+	var rtExpiresAt time.Time
+	if setRefreshExp {
+		rtExpiresAt = time.Now().Add(time.Duration(refreshHours) * time.Hour)
+	}
 	rt := &models.RefreshToken{
 		ID:        uuid.New(),
 		UserID:    user.ID,
 		Token:     rtStr,
-		ExpiresAt: time.Now().Add(time.Duration(refreshHours) * time.Hour),
+		ExpiresAt: rtExpiresAt,
 		Revoked:   false,
 		CreatedAt: time.Now(),
 	}
@@ -208,12 +224,24 @@ func UserSignIn(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to store refresh token"})
 	}
 
+	var refreshExp interface{} = nil
+	if setRefreshExp {
+		refreshExp = rtExpiresAt
+	}
+
+	var expiresIn int
+	if setAccessExp {
+		expiresIn = accessMinutes * 60
+	} else {
+		expiresIn = 0
+	}
+
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message":            "Sign in successful",
 		"access_token":       tokenString,
-		"expires_in":         accessMinutes * 60,
+		"expires_in":         expiresIn,
 		"refresh_token":      rtStr,
-		"refresh_expires_at": rt.ExpiresAt,
+		"refresh_expires_at": refreshExp,
 		"user": fiber.Map{
 			"id":        user.ID,
 			"email":     user.Email,
@@ -239,7 +267,8 @@ func RefreshToken(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid refresh token"})
 	}
 
-	if rt.Revoked || time.Now().After(rt.ExpiresAt) {
+	// treat zero ExpiresAt as no expiration
+	if rt.Revoked || (!rt.ExpiresAt.IsZero() && time.Now().After(rt.ExpiresAt)) {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Refresh token expired or revoked"})
 	}
 
@@ -249,10 +278,14 @@ func RefreshToken(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "User not found"})
 	}
 
-	accessMinutes := 15
-	if v := os.Getenv("ACCESS_TOKEN_MINUTES"); v != "" {
-		if iv, err := strconv.Atoi(v); err == nil {
+	// determine access token expiration: if ACCESS_TOKEN_MINUTES not set -> no expiration
+	accessEnv := os.Getenv("ACCESS_TOKEN_MINUTES")
+	setAccessExp := false
+	accessMinutes := 0
+	if accessEnv != "" {
+		if iv, err := strconv.Atoi(accessEnv); err == nil && iv > 0 {
 			accessMinutes = iv
+			setAccessExp = true
 		}
 	}
 
@@ -265,7 +298,9 @@ func RefreshToken(c *fiber.Ctx) error {
 		"user_id":   user.ID.String(),
 		"email":     user.Email,
 		"user_role": user.UserRole,
-		"exp":       time.Now().Add(time.Duration(accessMinutes) * time.Minute).Unix(),
+	}
+	if setAccessExp {
+		claims["exp"] = time.Now().Add(time.Duration(accessMinutes) * time.Minute).Unix()
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString([]byte(secret))
@@ -273,7 +308,14 @@ func RefreshToken(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate access token"})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{"access_token": tokenString, "expires_in": accessMinutes * 60})
+	var expiresIn int
+	if setAccessExp {
+		expiresIn = accessMinutes * 60
+	} else {
+		expiresIn = 0
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"access_token": tokenString, "expires_in": expiresIn})
 }
 
 func UserLogout(c *fiber.Ctx) error {
