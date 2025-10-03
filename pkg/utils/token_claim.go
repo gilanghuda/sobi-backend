@@ -37,6 +37,7 @@ func ExtractUserIDFromHeader(authHeader string) (uuid.UUID, error) {
 
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
+		println(err.Error())
 		return uuid.Nil, errors.New("invalid user id in token")
 	}
 	return userID, nil

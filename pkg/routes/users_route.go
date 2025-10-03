@@ -7,6 +7,11 @@ import (
 )
 
 func RegisterUserRoutes(app *fiber.App) {
+	user := app.Group("/user", middleware.JWTProtected())
+	user.Get("/profile", controllers.UserProfile)
+	user.Put("/profile", controllers.UpdateUser)
+	user.Delete("/profile", controllers.DeleteUser)
+	user.Post("/logout", controllers.UserLogout)
 
 	app.Post("/signup", controllers.UserSignUp)
 	app.Post("/signin", controllers.UserSignIn)
@@ -15,11 +20,5 @@ func RegisterUserRoutes(app *fiber.App) {
 	app.Get("/get-ahli", controllers.GetAhliWithDetails)
 	app.Get("/user/:id", controllers.GetUserByID)
 	app.Post("/ahli", controllers.PromoteToAhli)
-
-	user := app.Group("/user", middleware.JWTProtected())
-	user.Get("/profile", controllers.UserProfile)
-	user.Put("/profile", controllers.UpdateUser)
-	user.Delete("/profile", controllers.DeleteUser)
-	user.Post("/logout", controllers.UserLogout)
 
 }
