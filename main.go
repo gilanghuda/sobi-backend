@@ -37,6 +37,7 @@ func main() {
 	routes.RegisterGoalsRoutes(app)
 	routes.RegisterChatRoutes(app)
 	routes.RegisterEducationRoutes(app)
+	routes.RegisterTransactionRoutes(app)
 
 	log.Fatal(app.Listen(":8000"))
 }

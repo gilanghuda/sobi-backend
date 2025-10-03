@@ -173,3 +173,25 @@ func (q *ChatQueries) GetRecentChatsAsTarget(userID uuid.UUID, limit int) ([]mod
 	}
 	return out, nil
 }
+
+// GetActiveRoom finds a room where the given user is owner or target and
+// the room was created between startTime and endTime (inclusive). Returns
+// an error "no active room" when none found.
+func (q *ChatQueries) GetActiveRoom(userID uuid.UUID, startTime, endTime time.Time) (models.Room, error) {
+	r := models.Room{}
+	query := `SELECT id, owner_id, target_id, category, visible, created_at, updated_at FROM rooms WHERE (owner_id = $1 OR target_id = $1) AND created_at >= $2 AND created_at <= $3 ORDER BY created_at DESC LIMIT 1`
+	var target sql.NullString
+	if err := q.DB.QueryRow(query, userID, startTime, endTime).Scan(&r.ID, &r.OwnerID, &target, &r.Category, &r.Visible, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return r, errors.New("no active room")
+		}
+		return r, errors.New("unable to get active room")
+	}
+	if target.Valid {
+		uid, err := uuid.Parse(target.String)
+		if err == nil {
+			r.TargetID = &uid
+		}
+	}
+	return r, nil
+}

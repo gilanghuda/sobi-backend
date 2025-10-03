@@ -112,7 +112,13 @@ func PostMessage(c *fiber.Ctx) error {
 	if p.Visible != nil {
 		vis = *p.Visible
 	}
-	m := &models.Message{ID: uuid.New(), RoomID: roomID, UserID: userID, Text: p.Text, Visible: vis, CreatedAt: time.Now()}
+	m := &models.Message{
+		ID:        uuid.New(),
+		RoomID:    roomID,
+		UserID:    userID,
+		Text:      p.Text,
+		Visible:   vis,
+		CreatedAt: time.Now()}
 	q := queries.ChatQueries{DB: database.DB}
 	if err := q.CreateMessage(m); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create message"})
@@ -200,6 +206,51 @@ func GetRecentChatsAsTarget(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(recent)
 }
 
+func GetActiveRoom(c *fiber.Ctx) error {
+	authHeader := c.Get("Authorization")
+	userID, err := utils.ExtractUserIDFromHeader(authHeader)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	payload := struct {
+		Time string `json:"time"`
+	}{}
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid body"})
+	}
+	if payload.Time == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "time required"})
+	}
+
+	// accept date with optional time: "2006-01-02", "2006-01-02 15:04" or "2006-01-02 15:04:05"
+	var t time.Time
+	var parseErr error
+	layouts := []string{"2006-01-02 15:04", "2006-01-02 15:04:05", "2006-01-02"}
+	for _, lay := range layouts {
+		t, parseErr = time.Parse(lay, payload.Time)
+		if parseErr == nil {
+			break
+		}
+	}
+	if parseErr != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid time format. use YYYY-MM-DD or YYYY-MM-DD HH:MM[:SS]"})
+	}
+
+	endTime := t
+	startTime := t.Add(-30 * time.Minute)
+
+	q := queries.ChatQueries{DB: database.DB}
+	r, err := q.GetActiveRoom(userID, startTime, endTime)
+	if err != nil {
+		if err.Error() == "no active room" {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "no active room"})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get active room"})
+	}
+	return c.Status(fiber.StatusOK).JSON(r)
+}
+
 func MatchHandler(c *fiber.Ctx) error {
 	authHeader := c.Get("Authorization")
 	userID, err := utils.ExtractUserIDFromHeader(authHeader)
@@ -248,4 +299,25 @@ func MatchHandler(c *fiber.Ctx) error {
 
 	penceritaQueue[cat] = append(penceritaQueue[cat], userID)
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "queued"})
+}
+
+func ChatWithGemini(c *fiber.Ctx) error {
+	authHeader := c.Get("Authorization")
+	_, _ = utils.ExtractUserIDFromHeader(authHeader) // allow both authenticated and anonymous; ignore error
+
+	payload := struct {
+		Prompt string `json:"prompt"`
+	}{}
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid body"})
+	}
+	if payload.Prompt == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "prompt required"})
+	}
+
+	reply, err := utils.QueryGemini(payload.Prompt)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "gemini error: " + err.Error()})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"reply": reply})
 }

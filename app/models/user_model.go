@@ -17,6 +17,19 @@ type User struct {
 	Verified     bool      `json:"verified"`
 	OTP          string    `json:"-"`
 	UserRole     string    `json:"user_role"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+
+	Price    float64 `json:"price,omitempty"`
+	Category string  `json:"category,omitempty"`
+	OpenTime string  `json:"open_time,omitempty"`
+	Rating   float64 `json:"rating,omitempty"`
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type PromoteAhliRequest struct {
+	Price    float64 `json:"price"`
+	Category string  `json:"category"`
+	OpenTime string  `json:"open_time"`
+	Rating   float64 `json:"rating,omitempty"`
 }

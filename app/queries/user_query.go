@@ -233,3 +233,95 @@ func (q *UserQueries) GetUsersByRole(role string) ([]models.User, error) {
 
 	return users, nil
 }
+
+// CreateAhli promotes an existing user to role 'ahli' and inserts ahli-specific data into ahli
+func (q *UserQueries) CreateAhli(uid uuid.UUID, req *models.PromoteAhliRequest) error {
+	tx, err := q.DB.Begin()
+	if err != nil {
+		return errors.New("unable to start transaction")
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// update user role to 'ahli'
+	_, err = tx.Exec(`UPDATE users SET user_role = 'ahli', updated_at = now() WHERE uid = $1`, uid)
+	if err != nil {
+		tx.Rollback()
+		return errors.New("unable to update user role, DB error")
+	}
+
+	// prepare open_time parameter (use nil when empty)
+	var openTimeParam interface{}
+	if req.OpenTime == "" {
+		openTimeParam = nil
+	} else {
+		openTimeParam = req.OpenTime
+	}
+
+	// insert ahli record into ahli
+	_, err = tx.Exec(`INSERT INTO ahli (uid, price, category, open_time, rating) VALUES ($1, $2, $3, $4, $5)`,
+		uid, req.Price, req.Category, openTimeParam, req.Rating,
+	)
+	if err != nil {
+		println(err.Error())
+		tx.Rollback()
+		return errors.New("unable to create ahli, DB error")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return errors.New("unable to commit transaction")
+	}
+
+	return nil
+}
+
+// GetAhliUsers returns users that are ahli along with ahli-specific fields
+func (q *UserQueries) GetAhliUsers() ([]models.User, error) {
+	users := []models.User{}
+	query := `SELECT u.uid, u.username, u.user_role, u.email, u.phone_number, u.gender, u.avatar, u.password_hash, u.verified, u.created_at, u.updated_at,
+	a.price, a.category, a.open_time, a.rating
+	FROM users u JOIN ahli a ON u.uid = a.uid WHERE u.user_role = 'ahli'`
+
+	rows, err := q.DB.Query(query)
+	if err != nil {
+		return users, errors.New("unable to get ahli users, DB error")
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var user models.User
+		var openTime sql.NullTime
+		if err := rows.Scan(
+			&user.ID,
+			&user.Username,
+			&user.UserRole,
+			&user.Email,
+			&user.PhoneNumber,
+			&user.Gender,
+			&user.Avatar,
+			&user.PasswordHash,
+			&user.Verified,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+			&user.Price,
+			&user.Category,
+			&openTime,
+			&user.Rating,
+		); err != nil {
+			return users, errors.New("error scanning ahli user row")
+		}
+		if openTime.Valid {
+			user.OpenTime = openTime.Time.Format("15:04:05")
+		}
+		users = append(users, user)
+	}
+
+	if err := rows.Err(); err != nil {
+		return users, errors.New("error iterating ahli user rows")
+	}
+
+	return users, nil
+}
