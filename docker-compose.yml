@@ -8,7 +8,7 @@
       image: gilanghuda/sobi-go-app:latest
       container_name: sobi_app
       ports:
-        - "80:80"
+        - "8000:8000"
       environment:
         DB_DOCKER_HOST: ${DB_DOCKER_HOST}
         DB_DOCKER_PORT: ${DB_DOCKER_PORT}
