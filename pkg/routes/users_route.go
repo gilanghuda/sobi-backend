@@ -15,6 +15,7 @@ func RegisterUserRoutes(app *fiber.App) {
 
 	app.Post("/signup", controllers.UserSignUp)
 	app.Post("/signin", controllers.UserSignIn)
+	app.Post("/signin/google", controllers.UserSignInWithGoogle)
 	app.Post("/verify-otp", controllers.UserVerifyOTP)
 	app.Post("/refresh-token", controllers.RefreshToken)
 	app.Get("/get-ahli", controllers.GetAhliWithDetails)

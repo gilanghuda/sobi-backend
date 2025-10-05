@@ -325,3 +325,31 @@ func (q *UserQueries) GetAhliUsers() ([]models.User, error) {
 
 	return users, nil
 }
+
+func (q *UserQueries) GetUserByUsername(username string) (models.User, error) {
+	user := models.User{}
+
+	query := `SELECT uid, username, user_role, email, password_hash, verified, created_at, updated_at
+			  FROM users WHERE username = $1`
+
+	err := q.DB.QueryRow(query, username).Scan(
+		&user.ID,
+		&user.Username,
+		&user.UserRole,
+		&user.Email,
+		&user.PasswordHash,
+		&user.Verified,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return user, errors.New("user not found")
+		}
+		println(err.Error())
+		return user, errors.New("unable to get user, DB error")
+	}
+
+	return user, nil
+}

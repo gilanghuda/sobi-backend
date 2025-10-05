@@ -48,3 +48,12 @@ type RecentChat struct {
 	LastMessage string    `json:"last_message"`
 	LastAt      time.Time `json:"last_at"`
 }
+
+type Notification struct {
+	ID          uuid.UUID  `json:"id" db:"id"`
+	UserID      uuid.UUID  `json:"user_id" db:"user_id"`
+	Payload     string     `json:"payload" db:"payload"`
+	Delivered   bool       `json:"delivered" db:"delivered"`
+	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
+	DeliveredAt *time.Time `json:"delivered_at,omitempty" db:"delivered_at"`
+}
