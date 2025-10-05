@@ -373,28 +373,26 @@ func StartMatchmaking() {
 			pendengarQueue[cat] = pendList[1:]
 			penceritaQueue[cat] = pc[1:]
 
+			// create ephemeral room (not persisted)
 			r := &models.Room{ID: uuid.New(), OwnerID: pend, TargetID: &pencer, Category: cat, Visible: false, CreatedAt: time.Now(), UpdatedAt: time.Now()}
-			qq := queries.ChatQueries{DB: database.DB}
-			if err := qq.CreateRoom(r); err != nil {
-				continue
-			}
 
 			notifA := map[string]interface{}{"event": "matched", "room_id": r.ID, "matched_with": pencer}
 			notifB := map[string]interface{}{"event": "matched", "room_id": r.ID, "matched_with": pend}
 			ba, _ := json.Marshal(notifA)
 			bb, _ := json.Marshal(notifB)
+
 			clientsMu.RLock()
 			if conns, ok := clientsByUser[pend]; ok {
 				for cc := range conns {
 					if cc.conn != nil {
-						cc.conn.WriteMessage(websocket.TextMessage, ba)
+						_ = cc.conn.WriteMessage(websocket.TextMessage, ba)
 					}
 				}
 			}
 			if conns, ok := clientsByUser[pencer]; ok {
 				for cc := range conns {
 					if cc.conn != nil {
-						cc.conn.WriteMessage(websocket.TextMessage, bb)
+						_ = cc.conn.WriteMessage(websocket.TextMessage, bb)
 					}
 				}
 			}
@@ -452,64 +450,38 @@ func MatchmakingHandler(c *fiber.Ctx) error {
 		log.Printf("MatchmakingHandler[%s]: category empty, defaulting to 'default'", serverID)
 	}
 
-	qdb := queries.ChatQueries{DB: database.DB}
-	log.Printf("MatchmakingHandler[%s]: db pointer=%p", serverID, qdb.DB)
-
-	// handle pendengar role
+	// handle pendengar role without DB room creation
 	if payload.Role == "pendengar" {
 		log.Printf("MatchmakingHandler[%s]: handling pendengar=%s for category=%s", serverID, userID.String(), cat)
 		queueMu.Lock()
-		// snapshot queue lengths
-		pendLen := len(penceritaQueue[cat])
-		log.Printf("MatchmakingHandler[%s]: current penceritaQueue[%s] len=%d", serverID, cat, pendLen)
 		if q, ok := penceritaQueue[cat]; ok && len(q) > 0 {
 			otherID := q[0]
 			penceritaQueue[cat] = q[1:]
-			log.Printf("MatchmakingHandler[%s]: popped pencerita=%s from queue (new len=%d)", serverID, otherID.String(), len(penceritaQueue[cat]))
+			log.Printf("MatchmakingHandler[%s]: matched pendengar=%s with pencerita=%s", serverID, userID.String(), otherID.String())
 			queueMu.Unlock()
 
-			// create room
+			// ephemeral room
 			r := &models.Room{ID: uuid.New(), OwnerID: userID, TargetID: &otherID, Category: cat, Visible: false, CreatedAt: time.Now(), UpdatedAt: time.Now()}
-			if err := qdb.CreateRoom(r); err != nil {
-				log.Printf("MatchmakingHandler[%s]: CreateRoom failed for %s-%s: %v", serverID, userID.String(), otherID.String(), err)
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create room"})
-			}
-			log.Printf("MatchmakingHandler[%s]: room created id=%s owner=%s target=%s", serverID, r.ID.String(), userID.String(), otherID.String())
 
 			notif := map[string]interface{}{"event": "matched", "room_id": r.ID, "matched_with": otherID}
 			notifOther := map[string]interface{}{"event": "matched", "room_id": r.ID, "matched_with": userID}
 			b1, _ := json.Marshal(notif)
 			b2, _ := json.Marshal(notifOther)
 
-			// attempt local notify
 			clientsMu.RLock()
 			if conns, ok := clientsByUser[userID]; ok {
-				log.Printf("MatchmakingHandler[%s]: owner %s has %d local conn(s)", serverID, userID.String(), len(conns))
 				for cc := range conns {
 					if cc.conn != nil {
-						if err := cc.conn.WriteMessage(websocket.TextMessage, b1); err != nil {
-							log.Printf("MatchmakingHandler[%s]: write to owner %s failed: %v", serverID, userID.String(), err)
-						} else {
-							log.Printf("MatchmakingHandler[%s]: notified owner %s via websocket", serverID, userID.String())
-						}
+						_ = cc.conn.WriteMessage(websocket.TextMessage, b1)
 					}
 				}
-			} else {
-				log.Printf("MatchmakingHandler[%s]: no local websocket connections for owner %s", serverID, userID.String())
 			}
 			if conns, ok := clientsByUser[otherID]; ok {
-				log.Printf("MatchmakingHandler[%s]: other %s has %d local conn(s)", serverID, otherID.String(), len(conns))
 				for cc := range conns {
 					if cc.conn != nil {
-						if err := cc.conn.WriteMessage(websocket.TextMessage, b2); err != nil {
-							log.Printf("MatchmakingHandler[%s]: write to other %s failed: %v", serverID, otherID.String(), err)
-						} else {
-							log.Printf("MatchmakingHandler[%s]: notified other %s via websocket", serverID, otherID.String())
-						}
+						_ = cc.conn.WriteMessage(websocket.TextMessage, b2)
 					}
 				}
-			} else {
-				log.Printf("MatchmakingHandler[%s]: no local websocket connections for other %s", serverID, otherID.String())
 			}
 			clientsMu.RUnlock()
 
@@ -523,21 +495,16 @@ func MatchmakingHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "queued"})
 	}
 
-	// handle pencerita role
+	// handle pencerita role without DB room creation
 	log.Printf("MatchmakingHandler[%s]: handling pencerita=%s for category=%s", serverID, userID.String(), cat)
 	queueMu.Lock()
 	if q, ok := pendengarQueue[cat]; ok && len(q) > 0 {
 		otherID := q[0]
 		pendengarQueue[cat] = q[1:]
-		log.Printf("MatchmakingHandler[%s]: popped pendengar=%s from queue (new len=%d)", serverID, otherID.String(), len(pendengarQueue[cat]))
+		log.Printf("MatchmakingHandler[%s]: matched pencerita=%s with pendengar=%s", serverID, userID.String(), otherID.String())
 		queueMu.Unlock()
 
 		r := &models.Room{ID: uuid.New(), OwnerID: otherID, TargetID: &userID, Category: cat, Visible: false, CreatedAt: time.Now(), UpdatedAt: time.Now()}
-		if err := qdb.CreateRoom(r); err != nil {
-			log.Printf("MatchmakingHandler[%s]: CreateRoom failed for %s-%s: %v", serverID, otherID.String(), userID.String(), err)
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create room"})
-		}
-		log.Printf("MatchmakingHandler[%s]: room created id=%s owner=%s target=%s", serverID, r.ID.String(), otherID.String(), userID.String())
 
 		notif := map[string]interface{}{"event": "matched", "room_id": r.ID, "matched_with": otherID}
 		notifOther := map[string]interface{}{"event": "matched", "room_id": r.ID, "matched_with": userID}
@@ -546,32 +513,18 @@ func MatchmakingHandler(c *fiber.Ctx) error {
 
 		clientsMu.RLock()
 		if conns, ok := clientsByUser[userID]; ok {
-			log.Printf("MatchmakingHandler[%s]: pencerita %s has %d local conn(s)", serverID, userID.String(), len(conns))
 			for cc := range conns {
 				if cc.conn != nil {
-					if err := cc.conn.WriteMessage(websocket.TextMessage, b1); err != nil {
-						log.Printf("MatchmakingHandler[%s]: write to pencerita %s failed: %v", serverID, userID.String(), err)
-					} else {
-						log.Printf("MatchmakingHandler[%s]: notified pencerita %s via websocket", serverID, userID.String())
-					}
+					_ = cc.conn.WriteMessage(websocket.TextMessage, b1)
 				}
 			}
-		} else {
-			log.Printf("MatchmakingHandler[%s]: no local websocket connections for pencerita %s", serverID, userID.String())
 		}
 		if conns, ok := clientsByUser[otherID]; ok {
-			log.Printf("MatchmakingHandler[%s]: other %s has %d local conn(s)", serverID, otherID.String(), len(conns))
 			for cc := range conns {
 				if cc.conn != nil {
-					if err := cc.conn.WriteMessage(websocket.TextMessage, b2); err != nil {
-						log.Printf("MatchmakingHandler[%s]: write to other %s failed: %v", serverID, otherID.String(), err)
-					} else {
-						log.Printf("MatchmakingHandler[%s]: notified other %s via websocket", serverID, otherID.String())
-					}
+					_ = cc.conn.WriteMessage(websocket.TextMessage, b2)
 				}
 			}
-		} else {
-			log.Printf("MatchmakingHandler[%s]: no local websocket connections for other %s", serverID, otherID.String())
 		}
 		clientsMu.RUnlock()
 
