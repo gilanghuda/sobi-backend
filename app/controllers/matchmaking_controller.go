@@ -80,7 +80,12 @@ func (m *MatchMaker) dequeueOpposite(category, role string) *MatchEntry {
 func (m *MatchMaker) removeByUser(category, role string, userID uuid.UUID) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	queue := m.queues[category][role]
+	// defensive: if category or role map doesn't exist, nothing to do
+	rolesMap, ok := m.queues[category]
+	if !ok {
+		return
+	}
+	queue := rolesMap[role]
 	newQ := make([]*MatchEntry, 0, len(queue))
 	removed := false
 	for _, e := range queue {
@@ -93,7 +98,7 @@ func (m *MatchMaker) removeByUser(category, role string, userID uuid.UUID) {
 		}
 		newQ = append(newQ, e)
 	}
-	m.queues[category][role] = newQ
+	rolesMap[role] = newQ
 	if removed {
 		log.Printf("event=removed_from_queue user=%s role=%s category=%s", userID, role, category)
 	}
@@ -173,12 +178,20 @@ func WsHandlerFiber(c *websocket.Conn) {
 	}
 
 	utils.DefaultNotifier.Unregister(userID)
+
+	// Snapshot categories under lock to avoid double-locking when calling removeByUser
 	Matcher.mu.Lock()
+	cats := make([]string, 0, len(Matcher.queues))
 	for cat := range Matcher.queues {
+		cats = append(cats, cat)
+	}
+	Matcher.mu.Unlock()
+
+	for _, cat := range cats {
 		Matcher.removeByUser(cat, "pencerita", userID)
 		Matcher.removeByUser(cat, "pendengar", userID)
 	}
-	Matcher.mu.Unlock()
+
 	log.Printf("event=ws_disconnected user=%s", userID.String())
 	_ = c.Close()
 }
