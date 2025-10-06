@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"encoding/json"
+	"log"
 	"sync"
 	"time"
 
@@ -37,6 +38,7 @@ func WsHandler(c *websocket.Conn) {
 		head := "Bearer " + token
 		userID, _ = utils.ExtractUserIDFromHeader(head)
 	}
+	log.Printf("New WebSocket connection: userID=%s", userID)
 
 	cl := &client{conn: c, uid: userID}
 	hub[cl] = true

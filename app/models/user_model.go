@@ -28,8 +28,9 @@ type User struct {
 }
 
 type PromoteAhliRequest struct {
-	Price    float64 `json:"price"`
-	Category string  `json:"category"`
-	OpenTime string  `json:"open_time"`
-	Rating   float64 `json:"rating,omitempty"`
+	UserID   uuid.UUID `json:"user_id,omitempty"`
+	Price    float64   `json:"price"`
+	Category string    `json:"category"`
+	OpenTime string    `json:"open_time"`
+	Rating   float64   `json:"rating,omitempty"`
 }

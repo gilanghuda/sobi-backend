@@ -11,7 +11,7 @@ import (
 func ValidateGoogleIDToken(ctx context.Context, idToken string) (string, error) {
 	audience := os.Getenv("OAUTH_CLIENT_ID")
 	if audience == "" {
-		return "", errors.New("oauth client id not configured")
+		return "", errors.New("oauth client id not configured (tidak ada)")
 	}
 
 	tok, err := idtoken.Validate(ctx, idToken, audience)
