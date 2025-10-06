@@ -8,6 +8,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/joho/godotenv"
+
+	"github.com/gilanghuda/sobi-backend/app/controllers"
 )
 
 func main() {
@@ -38,6 +40,8 @@ func main() {
 	routes.RegisterChatRoutes(app)
 	routes.RegisterEducationRoutes(app)
 	routes.RegisterTransactionRoutes(app)
+
+	controllers.StartMessageDispatcher()
 
 	log.Fatal(app.Listen(":8000"))
 }
